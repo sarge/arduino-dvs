@@ -35,6 +35,8 @@ void setup() {
   pinMode(buttonUpPin, INPUT);
   pinMode(buttonDownPin, INPUT);
   pinMode(fanSpeenPin, OUTPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
+  
 }
 
 void checkButtons(){
@@ -42,16 +44,20 @@ void checkButtons(){
   int buttonUp_val = digitalRead(buttonUpPin);
   int buttonDown_val = digitalRead(buttonDownPin);
   
-  if (buttonUp_val == 1 && buttonDown_val == 1){
+  if (buttonUp_val == HIGH && buttonDown_val == HIGH){
     editMode = !editMode;
+    
+
     Serial.print("mode: ");
     Serial.println(editMode);
+    
+    
   }
-  else if (buttonUp_val == 1 && setting[editMode] < settingMax[editMode]){
+  else if (buttonUp_val == HIGH && setting[editMode] < settingMax[editMode]){
     Serial.println("up");
     setting[editMode] = setting[editMode] + settingInc[editMode];
   }
-  else if (buttonDown_val == 1 && setting[editMode] > settingMin[editMode]){
+  else if (buttonDown_val == HIGH && setting[editMode] > settingMin[editMode]){
     Serial.println("down");
     setting[editMode] = setting[editMode] - settingInc[editMode];
   }
@@ -124,6 +130,10 @@ void updateFan(int temp){
     analogWrite(fanSpeenPin, desiredFanSpeed);
     currentFanSpeed = desiredFanSpeed;
   }
+  
+  if (currentFanSpeed > 10)
+        digitalWrite(LED_BUILTIN, HIGH);
+  
 }
 
 void printStatus(){
