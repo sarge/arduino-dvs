@@ -28,6 +28,31 @@ unsigned int nextRecordIndex = 0;
 // fan control
 int currentFanSpeed = 0;
 
+// gfx
+#include "U8glib.h"
+U8GLIB_SH1106_128X64 u8g(U8G_I2C_OPT_NONE);	// I2C / TWI 
+
+void u8g_prepare(void) {
+  u8g.setFont(u8g_font_6x10);
+  u8g.setFontRefHeightExtendedText();
+  u8g.setDefaultForegroundColor();
+  u8g.setFontPosTop();
+}
+
+void drawStatus() {
+  u8g_prepare();
+    
+  if (editMode == 0)
+    u8g.drawStr( 0, 0, "edit mode: temp");
+  else if (editMode == 1)
+    u8g.drawStr( 0, 0, "edit mode: fan");
+  
+  u8g.drawStr( 0, 10, ("current temp: " + String(currentTemp)).c_str()); 
+  u8g.drawStr( 0, 20,  ("fan temp: " + String(setting[0])).c_str());
+  u8g.drawStr( 0, 30,  ("fan speed: " + String(setting[1])).c_str());
+  u8g.drawStr( 0, 40,  ("fan curr speed: " + String(currentFanSpeed)).c_str());
+}
+
 void setup() {
 
   Serial.begin(9600);
@@ -37,6 +62,9 @@ void setup() {
   pinMode(fanSpeenPin, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
   
+  // gfx
+  pinMode(13, OUTPUT);           
+  digitalWrite(13, HIGH); 
 }
 
 void checkButtons(){
@@ -47,11 +75,8 @@ void checkButtons(){
   if (buttonUp_val == HIGH && buttonDown_val == HIGH){
     editMode = !editMode;
     
-
     Serial.print("mode: ");
     Serial.println(editMode);
-    
-    
   }
   else if (buttonUp_val == HIGH && setting[editMode] < settingMax[editMode]){
     Serial.println("up");
@@ -133,7 +158,6 @@ void updateFan(int temp){
   
   if (currentFanSpeed > 10)
         digitalWrite(LED_BUILTIN, HIGH);
-  
 }
 
 void printStatus(){
@@ -160,7 +184,12 @@ void loop() {
   
   recordHistory(temp);
   
-  printStatus();
+//  printStatus();
+  
+  u8g.firstPage(); 
+  do {
+    drawStatus();
+  } while(u8g.nextPage()); 
  
   delay(200);
 }
