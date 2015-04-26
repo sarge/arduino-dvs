@@ -1,25 +1,28 @@
 // io
-const int temperaturePin = 0; // analog
-const int buttonDownPin = 11;
-const int buttonUpPin   = 12;
-const int fanSpeenPin   = 9;
+const int temperaturePin = 0; // analog a0
+const int buttonDownPin = 11; //
+const int buttonUpPin   = 12; //
+const int fanSpeenPin   = 9;  //
 
 // modes
 const int TURNONTEMP = 0;
 const int FANSPEED = 1;
 int editMode = 0;              // 0 = temp, 1 = fan speed
 int setting[]    = {19, 40};   // inital temp, inital fan speed
-int settingMin[] = {15, 0};
-int settingMax[] = {30, 160};
+int settingMin[] = {10, 0};
+int settingMax[] = {30, 240};
 int settingInc[] = {1, 20};
 
-int last_buttonUp_val = 0;
-int last_buttonDown_val = 0;
+int last_buttonUp_val = HIGH;
+int last_buttonDown_val = HIGH;
 
 // temperature
 int currentTemp = 10;
 int lastTemp = 0;
 int lastTempCount = 0;
+const int TEMPDATAPOINTS = 10;
+int recentTemp[TEMPDATAPOINTS];
+int nextTempRecordIndex = 0;
 
 // history
 const int DATAPOINTS = 96;
@@ -73,6 +76,7 @@ void setFont(int font){
 
 void drawStatus() {
   u8g_prepare();
+
   
   setFont(FONT_NORMAL);  
   u8g.drawStr( 0, 10, ("current temp: " + String(currentTemp)).c_str()); 
@@ -92,7 +96,6 @@ void drawStatus2() {
   u8g.drawLine(46, 0, 26, 63);
 
   setFont(FONT_BIG);
-  
   int width = u8g.getStrWidth(String(currentTemp).c_str());
   u8g.drawStr( 36 - width, 0, String(currentTemp).c_str());
   
@@ -127,7 +130,7 @@ void drawStatus2() {
 
 void setup() {
 
-//  Serial.begin(9600);
+  //Serial.begin(9600);
   
   pinMode(buttonUpPin, INPUT);
   pinMode(buttonDownPin, INPUT);
@@ -137,12 +140,19 @@ void setup() {
   // gfx
   pinMode(13, OUTPUT);           
   digitalWrite(13, HIGH); 
+  
+  u8g.setRot180();
 }
 
 void checkButtons(){
   
   int buttonUp_val = digitalRead(buttonUpPin);
   int buttonDown_val = digitalRead(buttonDownPin);
+  
+  Serial.println("");
+  Serial.print("btn: ");
+  Serial.print(buttonUp_val);
+  Serial.println(buttonDown_val);
   
   if (last_buttonUp_val != buttonUp_val)
   {
@@ -156,16 +166,16 @@ void checkButtons(){
     return;
   }
   
-  if (buttonUp_val == HIGH && buttonDown_val == HIGH){
+  if (buttonUp_val == LOW && buttonDown_val == LOW){
     editMode = !editMode;
     
-    buttonUp_val = LOW;
-    last_buttonDown_val = LOW;
+    last_buttonUp_val = HIGH;
+    last_buttonDown_val = HIGH;
   }
-  else if (buttonUp_val == HIGH && setting[editMode] < settingMax[editMode]){
+  else if (buttonUp_val == LOW && setting[editMode] < settingMax[editMode]){
     setting[editMode] = setting[editMode] + settingInc[editMode];
   }
-  else if (buttonDown_val == HIGH && setting[editMode] > settingMin[editMode]){
+  else if (buttonDown_val == LOW && setting[editMode] > settingMin[editMode]){
     setting[editMode] = setting[editMode] - settingInc[editMode];
   }
 }
@@ -216,19 +226,18 @@ int getTemperature(){
   int rawTemp = analogRead(temperaturePin);
   int temp = (125*rawTemp)>>8 ; // Temperature calculation formula
   
-  if (lastTemp == temp){
-    lastTempCount++;
-  }
-  else 
-  {
-    lastTemp = temp;
-    lastTempCount = 0;
-  }
+  recentTemp[nextTempRecordIndex] = temp;
   
-  if (currentTemp != lastTemp && lastTempCount == 3){
-    currentTemp = lastTemp;
-  }
+  nextTempRecordIndex++;
+  if (nextTempRecordIndex == TEMPDATAPOINTS)
+      nextTempRecordIndex = 0;
   
+  float total = 0;
+  for(int j = 0; j < TEMPDATAPOINTS; j++)
+      total+= recentTemp[j];
+      
+  currentTemp = int(total / TEMPDATAPOINTS);
+    
   return currentTemp;
 }
 
