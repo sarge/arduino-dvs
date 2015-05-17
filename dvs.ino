@@ -2,7 +2,9 @@
 #include "U8glib.h"
 
 // io
-const int temperaturePin = 0; // analog a0
+const int roomTempPin = 2; // 
+const int ceilingTempPin = 4; // 
+
 const int buttonDownPin = 11; //
 const int buttonUpPin   = 12; //
 const int fanSpeenPin   = 9;  //
@@ -27,9 +29,9 @@ int recentTemp[TEMPDATAPOINTS];
 int nextTempRecordIndex = 0;
 
 byte room_addr[] = {0x28, 0xC8, 0x39, 0x1, 0x7, 0x0, 0x0, 0xA2};
-OneWire  room(2);
-byte ceiling_addr[8];
-OneWire  ceiling(3);
+OneWire  room(roomTempPin);
+byte ceiling_addr[] = {0x28, 0x92, 0x22, 0x1, 0x7, 0x0, 0x0, 0x7}; // direct address didn't appear to work?
+OneWire  ceiling(ceilingTempPin);
 
 // history
 const int DATAPOINTS = 96;
@@ -80,7 +82,7 @@ void setFont(int font){
   u8g.setFontPosTop();
 }
 
-void drawStatus2(int roomTemp) {
+void drawStatus2(int roomTemp, int ceilingTemp) {
   u8g_prepare();
 
   u8g.drawLine(44, 0, 24, 63);
@@ -91,13 +93,15 @@ void drawStatus2(int roomTemp) {
   u8g.drawStr( 36 - width, 0, String(roomTemp).c_str());
 
   setFont(FONT_SMALL);
-  u8g.drawStr( 0, 50, ("L " + String(temp_low)).c_str());
-  u8g.drawStr( 0, 40, ("H " + String(temp_high)).c_str());
+  u8g.drawStr( 0, 50, ("H " + String(temp_high)).c_str());
+  u8g.drawStr( 0, 40, ("L " + String(temp_low)).c_str());
   u8g.drawStr( 37, -1, "o");
 
   setFont(FONT_NORMAL);
   u8g.drawStr(50,  0, "Fan:");
   u8g.drawStr(50, 10, "Temp:");
+  
+  u8g.drawStr(0, 30, ("C "  + String(ceilingTemp)).c_str());
 
   u8g.drawStr(90,  0, currentFanSpeed > 10 ? "on" : "off");
 
@@ -203,12 +207,12 @@ void prepareAndFindTemperatureDS(OneWire ds, byte *addr){
     return;
   }
   
-  int i;
-  Serial.print("ROM =");
-  for( i = 0; i < 8; i++) {
-    Serial.write(' ');
-    Serial.print(addr[i], HEX);
-  }
+//  int i;
+//  Serial.println("ROM =");
+//  for( i = 0; i < 8; i++) {
+//    Serial.write(' ');
+//    Serial.print(addr[i], HEX);
+//  }
 
   ds.reset();
   ds.select(addr);
@@ -263,21 +267,21 @@ void updateFan(int temp){
 void loop() {
   
   prepareTemperatureDS(room, room_addr);
-  prepareTemperatureDS(ceiling, ceiling_addr);
+  prepareAndFindTemperatureDS(ceiling, ceiling_addr);
   
   delay(1000);     // maybe 750ms is enough, maybe not
   
-  int temp = getTemperatureDS(room, room_addr);
-  int temp2 = getTemperatureDS(ceiling, ceiling_addr);
+  int roomTemp = getTemperatureDS(room, room_addr);
+  int ceilingTemp = getTemperatureDS(ceiling, ceiling_addr);
 
   checkButtons();
 
-  updateFan(temp);
+  updateFan(ceilingTemp);
 
-  recordHistory(temp);
+  recordHistory(ceilingTemp);
 
   u8g.firstPage();
   do {
-    drawStatus2(temp);
+    drawStatus2(roomTemp, ceilingTemp);
   } while(u8g.nextPage());
 }
