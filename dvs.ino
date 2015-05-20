@@ -1,6 +1,64 @@
 #include <OneWire.h>
 #include "U8glib.h"
 
+// history
+const int DATAPOINTS = 96;
+const unsigned long INTERVAL = 900000;//(24 * 60 * 60 * 1000) / DATAPOINTS; // five minute intervals
+//const unsigned long INTERVAL = 10; // testing
+
+namespace History {
+  typedef struct {
+    int data[DATAPOINTS];
+    int minimum = 40;
+    int maximum = -40;
+    unsigned int nextRecordIndex = 0;
+    unsigned long nextRecordMilli = 0;
+  } HISTORY;
+
+  void initialiseHistory(HISTORY *h){
+    for(int i = 0; i < DATAPOINTS ; i++){
+      h->data[i] = -100;
+    }
+  };
+
+  void record(HISTORY *h, int temp){
+    
+    if (h->nextRecordMilli < millis()){
+      h->data[h->nextRecordIndex] = temp;
+      h->nextRecordIndex ++;
+
+      if (h->nextRecordIndex == DATAPOINTS)
+        h->nextRecordIndex = 0;
+
+      h->nextRecordMilli = millis() + INTERVAL;
+
+      // recalculate lows and highs
+      for(int i = 0; i < DATAPOINTS; i++){
+        if (h->data[i] > -100){
+          if (h->data[i] < h->minimum)
+            h->minimum = h->data[i];
+
+          if (h->data[i] > h->maximum)
+            h->maximum = h->data[i];
+        }
+      }
+    }
+  }
+  
+  void printHistory(U8GLIB *u8g, HISTORY *h, int xOffset, int yOffset){
+    for(int i = h->nextRecordIndex; i < DATAPOINTS + h->nextRecordIndex; i++){
+      u8g->drawPixel(xOffset + i - h->nextRecordIndex, yOffset - h->data[i % DATAPOINTS ]);
+    }
+  }
+  
+  void printHistoryDash(U8GLIB *u8g, HISTORY *h, int xOffset, int yOffset){
+    for(int i = h->nextRecordIndex; i < DATAPOINTS + h->nextRecordIndex; i+= 2){
+      u8g->drawPixel(xOffset + i - h->nextRecordIndex, yOffset - h->data[i % DATAPOINTS ]);
+    }
+  }
+}
+
+
 // io
 const int roomTempPin = 2; // 
 const int ceilingTempPin = 4; // 
@@ -33,15 +91,9 @@ OneWire  room(roomTempPin);
 byte ceiling_addr[] = {0x28, 0x92, 0x22, 0x1, 0x7, 0x0, 0x0, 0x7}; // direct address didn't appear to work?
 OneWire  ceiling(ceilingTempPin);
 
-// history
-const int DATAPOINTS = 96;
-const unsigned long INTERVAL = 900000;//(24 * 60 * 60 * 1000) / DATAPOINTS; // five minute intervals
-//const unsigned long INTERVAL = 100; // testing
-int histTemp[DATAPOINTS];
-unsigned long nextRecordMilli = 0;
-unsigned int nextRecordIndex = 0;
-int temp_low = 40;
-int temp_high = -40;
+History::HISTORY roomHistory;
+History::HISTORY ceilingHistory;
+History::HISTORY fanHistory;
 
 // fan control
 int currentFanSpeed = 0;
@@ -49,7 +101,7 @@ int currentFanSpeed = 0;
 // gfx
 U8GLIB_SH1106_128X64 u8g(U8G_I2C_OPT_NONE);	// I2C / TWI
 
-const  int max_size = 76;
+const  int max_size = 50;
 
 const int FONT_NORMAL = 0;
 const int FONT_SMALL = 1;
@@ -85,49 +137,51 @@ void setFont(int font){
 void drawStatus2(int roomTemp, int ceilingTemp) {
   u8g_prepare();
 
-  u8g.drawLine(44, 0, 24, 63);
-  u8g.drawLine(46, 0, 26, 63);
-
   setFont(FONT_BIG);
   int width = u8g.getStrWidth(String(roomTemp).c_str());
   u8g.drawStr( 36 - width, 0, String(roomTemp).c_str());
 
   setFont(FONT_SMALL);
-  u8g.drawStr( 0, 50, ("H " + String(temp_high)).c_str());
-  u8g.drawStr( 0, 40, ("L " + String(temp_low)).c_str());
   u8g.drawStr( 37, -1, "o");
 
-  setFont(FONT_NORMAL);
-  u8g.drawStr(50,  0, "Fan:");
-  u8g.drawStr(50, 10, "Temp:");
-  
-  u8g.drawStr(0, 30, ("C "  + String(ceilingTemp)).c_str());
+  // ceiling
+  u8g.drawStr( 0, 28, "Roof");
+  u8g.drawStr( 0, 38, ("C "  + String(ceilingTemp)).c_str());
+  u8g.drawStr( 0, 47, ("H " + String(ceilingHistory.maximum)).c_str());
+  if (ceilingHistory.minimum > -100)
+    u8g.drawStr( 0, 56, ("L " + String(ceilingHistory.minimum)).c_str());
 
-  u8g.drawStr(90,  0, currentFanSpeed > 10 ? "on" : "off");
+  // room
+  u8g.drawStr( 50, 0, ("H " + String(roomHistory.maximum)).c_str());
+  if (ceilingHistory.minimum > -100)
+    u8g.drawStr( 50, 10, ("L " + String(roomHistory.minimum)).c_str());
+
+  u8g.drawStr(75,  0, "Fan:");
+  u8g.drawStr(75, 10, "Temp:");
+  u8g.drawStr(110,  0, currentFanSpeed > 10 ? "on" : "off");
 
   // fan temp
   setFont(editMode == 0 ? FONT_BOLD : FONT_NORMAL);
-  u8g.drawStr(90, 10, String(setting[0]).c_str());
+  u8g.drawStr(110, 10, String(setting[0]).c_str());
 
   // fan speed
   int speed_percentage = int((float(setting[1]) / float(settingMax[1])) * 100);
   int screen_size = (float(speed_percentage) / float(100)) * max_size;
 
   if (editMode == 1)
-    u8g.drawFrame(48, 21, max_size + 4, 8);
-  u8g.drawBox(50, 23, screen_size, 4);
+    u8g.drawFrame(48 + 25, 21, max_size + 4, 8);
+  u8g.drawBox(50 + 25, 23, screen_size, 4);
 
-  // print history
-  for(int i = nextRecordIndex; i < DATAPOINTS + nextRecordIndex; i++){
-    u8g.drawPixel(30 + i - nextRecordIndex, 60 - histTemp[i % DATAPOINTS ]);
-  }
+  History::printHistoryDash(&u8g, &ceilingHistory, 30, 60);
+  History::printHistory(&u8g, &roomHistory, 30, 60);
+  History::printHistory(&u8g, &fanHistory, 30, 62);
 }
 
 void setup() {
-
-  Serial.begin(9600);
   
-   // 28 C8 39 1 7 0 0 A2
+  History::initialiseHistory(&roomHistory);  
+  History::initialiseHistory(&ceilingHistory);
+  History::initialiseHistory(&fanHistory);
   
   pinMode(buttonUpPin, INPUT);
   pinMode(buttonDownPin, INPUT);
@@ -172,29 +226,6 @@ void checkButtons(){
   }
 }
 
-
-void recordHistory(int temp){
-
-  if (nextRecordMilli < millis()){
-    histTemp[nextRecordIndex] = temp;
-    nextRecordIndex ++;
-
-    if (nextRecordIndex == DATAPOINTS)
-      nextRecordIndex = 0;
-
-    nextRecordMilli = millis() + INTERVAL;
-
-    // recalculate lows and highs
-    for(int i = 0; i < DATAPOINTS; i++){
-      if (histTemp[i] < temp_low)
-        temp_low = histTemp[i];
-
-      if (histTemp[i] > temp_high)
-        temp_high = histTemp[i];
-    }
-  }
-}
-
 void prepareTemperatureDS(OneWire ds, byte *addr){
   ds.reset();
   ds.select(addr);
@@ -207,13 +238,6 @@ void prepareAndFindTemperatureDS(OneWire ds, byte *addr){
     return;
   }
   
-//  int i;
-//  Serial.println("ROM =");
-//  for( i = 0; i < 8; i++) {
-//    Serial.write(' ');
-//    Serial.print(addr[i], HEX);
-//  }
-
   ds.reset();
   ds.select(addr);
   ds.write(0x44, 1);
@@ -246,11 +270,12 @@ int getTemperatureDS(OneWire ds, byte *addr){
 }
 
 
-void updateFan(int temp){
+void updateFan(int roomTemp, int ceilingTemp){
 
   int desiredFanSpeed = currentFanSpeed;
-
-  if (temp > setting[TURNONTEMP])
+  
+  // if the ceiling temp was greater than the threshold or the ceiling temp is warmer than the roomTemp
+  if (ceilingTemp > setting[TURNONTEMP] || ceilingTemp > roomTemp)
     desiredFanSpeed = setting[FANSPEED];
   else
     desiredFanSpeed = 0;
@@ -276,12 +301,14 @@ void loop() {
 
   checkButtons();
 
-  updateFan(ceilingTemp);
+  updateFan(roomTemp, ceilingTemp);
 
-  recordHistory(ceilingTemp);
-
+  History::record(&roomHistory, roomTemp);
+  History::record(&ceilingHistory, ceilingTemp);
+  History::record(&fanHistory, currentFanSpeed > 0 ? 1 : -100);
+  
   u8g.firstPage();
   do {
-    drawStatus2(roomTemp, ceilingTemp);
+    drawStatus2(roomTemp, ceilingTemp);    
   } while(u8g.nextPage());
 }
